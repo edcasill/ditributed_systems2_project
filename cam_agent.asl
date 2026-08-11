@@ -27,13 +27,13 @@
 +person(State) : not fire <-
     .print("Person  (", State, ") detected, informing to master");
     .send("master@localhost", tell, person_state(State)).
-    // .send("master@192.168.0.202", tell, person_state(State)).
+    // .send("master@192.168.0.202", achieve, person_state(State)).
 
 // Plan B: fire detected
 +fire : true <-
     .print("ALERT! Fire dected");
     .send("master@localhost", tell, emergency).
-    // .send("master@192.168.0.202", tell, emergency).
+    // .send("master@192.168.0.202", achieve, emergency).
 
 // Reaction to JAVA agent
 +java_command("deactivate_alarm") <-

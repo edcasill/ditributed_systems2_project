@@ -139,30 +139,31 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
     return frame, datos_a_dibujar, cam_state, last_sent, fire
 
 
-class ReceiverFromJava(CyclicBehaviour):
-    """
-    Recive los mensajes de java
-    Args:
-        CyclicBehaviour (_type_): _description_
-    """
+class FipaReceiver(CyclicBehaviour):
     async def run(self):
-        # Espera recibir mensajes
+        # Espera recibir mensajes wait to receive messages
         msg = await self.receive(timeout=1.0)
         if msg:
-            try:
-                # Se asume que Java enviará un string JSON en el body
-                contenido = json.loads(msg.body)
+            # SPADE extrae los metadatos FIPA automaticamente y los pone en un diccionario
+            performative = msg.metadata.get("performative")
+            Content = msg.body
 
-                # Ejemplo: Java  {"performativa": "request", "accion": "apagar_alarma"}
-                if contenido.get("performativa") == "request":
-                    accion = contenido.get("accion")
-                    print(f"[{self.agent.jid}] Mensaje de Java recibido: {accion}")
-
-                    # Inyectar la orden como una nueva creencia en el entorno BDI
-                    self.agent.bdi.set_belief(f'comando_java("{accion}")')
-
-            except json.JSONDecodeError:
-                print("El mensaje recibido de Java no tiene un formato JSON válido.")
+            print(f"[{self.agent.jid}] FIPA message received:")
+            print(f" - Performative: {performative}")
+            print(f" - Content: {Content}")
+            
+            # Razonamiento basado en el estándar FIPA
+            if performative == "request":
+                # Si Java hace una petición (REQUEST), inyectamos una orden al motor BDI
+                self.agent.bdi.set_belief(f'java_command("{Content}")')
+                
+            elif performative == "inform":
+                # Si Java solo te informa de un estado (INFORM)
+                self.agent.bdi.set_belief(f'java_notification("{Content}")')
+                
+            elif performative == "query-ref":
+                # Si Java te pregunta algo
+                pass
 
 
 class BDI_agent_monitor(BDIAgent):
@@ -186,7 +187,7 @@ class BDI_agent_monitor(BDIAgent):
     async def setup(self):
         print(f"Starting {self.jid} agent. Opening camera window...")
         self.add_behaviour(VisionBehaviour())
-        self.add_behaviour(ReceiverFromJava())
+        self.add_behaviour(FipaReceiver())
 
 
 class VisionBehaviour(CyclicBehaviour):
