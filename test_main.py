@@ -8,7 +8,7 @@ import asyncio
 from spade_bdi.bdi import BDIAgent
 from spade.behaviour import CyclicBehaviour
 
-#[cite: 7]
+
 def enviar_a_api(estado, camara_id):
     try:
         datos_camara = {"actividad": estado,
@@ -22,8 +22,8 @@ def enviar_a_api(estado, camara_id):
     except Exception as e:
         print(f"Error API [Cámara {camara_id}]: {e}")
 
-#[cite: 7]
-def detectar_fire_rojo(frame):
+
+def detect_fire_red(frame):
     """
     Esta funcion es una abstraccion de una deteccion de fire por medio del color rojo,
     si hay suficientes pixeles rojos, se considera que hay fire en el lugar
@@ -42,11 +42,11 @@ def detectar_fire_rojo(frame):
     pixeles_rojos = cv2.countNonZero(mask)
     return pixeles_rojos > 500  
 
-#[cite: 7]
+
 def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id, COOLDOWN_API):
-    fire = detectar_fire_rojo(frame)
+    fire = detect_fire_red(frame)
     if fire:
-        print("PELIGRO, HAY fire EN EL LUGAR")
+        print("WARNING, FIRE DETECTED")
 
     results_skeleton = model(frame, verbose=False, imgsz=320)
     last_box = []
@@ -110,7 +110,7 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
 
     return frame, datos_a_dibujar, cam_state, last_sent, fire
 
-#[cite: 7]
+
 class BDI_agent_monitor(BDIAgent):
     def __init__(self, jid, passw, asl_file, cam_id, url, model):
         super().__init__(jid, passw, asl_file)  
@@ -129,7 +129,7 @@ class BDI_agent_monitor(BDIAgent):
         print(f"Starting {self.jid} agent. Opening camera window...")
         self.add_behaviour(VisionBehaviour())
 
-#[cite: 7]
+
 class VisionBehaviour(CyclicBehaviour):
     async def run(self):
         success, frame = self.agent.cap.read()

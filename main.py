@@ -22,7 +22,7 @@ def enviar_a_api(estado, camara_id):
         print(f"Error API [Cámara {camara_id}]: {e}")
 
 
-def detectar_fire_rojo(frame):
+def detect_fire_red(frame):
     """
     Esta funcion es una abstraccion de una deteccion de fire por medio del color rojo,
     si hay suficientes pixeles rojos, se considera que hay fire en el lugar
@@ -50,9 +50,9 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
     Esta función aisla la lógica para pasar cualquier frame de cualquier camara
     y que devuelva el frame dibujado y las variables de control actualizadas.
     """
-    fire = detectar_fire_rojo(frame)
+    fire = detect_fire_red(frame)
     if fire:
-        print("PELIGRO, HAY fire EN EL LUGAR")
+        print("WARNING, FIRE DETECTED")
 
     results_skeleton = model(frame, verbose=False, imgsz=320)
     last_box = []
