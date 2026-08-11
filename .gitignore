@@ -3,3 +3,6 @@ requirements_model.txt
 main_*
 behaviour_test.asl
 commander.asl
+__pycahe__
+*.pt
+*.pyc
