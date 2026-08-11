@@ -7,6 +7,8 @@ import constants
 import asyncio
 from spade_bdi.bdi import BDIAgent
 from spade.behaviour import CyclicBehaviour
+import json
+from spade.message import Message
 
 
 def enviar_a_api(estado, camara_id):
@@ -137,6 +139,32 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
     return frame, datos_a_dibujar, cam_state, last_sent, fire
 
 
+class ReceiverFromJava(CyclicBehaviour):
+    """
+    Recive los mensajes de java
+    Args:
+        CyclicBehaviour (_type_): _description_
+    """
+    async def run(self):
+        # Espera recibir mensajes
+        msg = await self.receive(timeout=1.0)
+        if msg:
+            try:
+                # Se asume que Java enviará un string JSON en el body
+                contenido = json.loads(msg.body)
+
+                # Ejemplo: Java  {"performativa": "request", "accion": "apagar_alarma"}
+                if contenido.get("performativa") == "request":
+                    accion = contenido.get("accion")
+                    print(f"[{self.agent.jid}] Mensaje de Java recibido: {accion}")
+
+                    # Inyectar la orden como una nueva creencia en el entorno BDI
+                    self.agent.bdi.set_belief(f'comando_java("{accion}")')
+
+            except json.JSONDecodeError:
+                print("El mensaje recibido de Java no tiene un formato JSON válido.")
+
+
 class BDI_agent_monitor(BDIAgent):
     """
     Initialize agents with the model to monitor on the cameras
@@ -158,6 +186,7 @@ class BDI_agent_monitor(BDIAgent):
     async def setup(self):
         print(f"Starting {self.jid} agent. Opening camera window...")
         self.add_behaviour(VisionBehaviour())
+        self.add_behaviour(ReceiverFromJava())
 
 
 class VisionBehaviour(CyclicBehaviour):
@@ -227,8 +256,10 @@ async def main():
     url1 = f"rtsp://{constants.USUARIOS[0]}:{constants.CONTRASENIA}@{constants.IPS[0]}/stream2"
     url2 = f"rtsp://{constants.USUARIOS[1]}:{constants.CONTRASENIA}@{constants.IPS[1]}/stream2"
 
-    monitor1 = BDI_agent_monitor("monitor1@localhost", "p@tr0ll", "cam_agent.asl", "camera_1", url1, model)
-    monitor2 = BDI_agent_monitor("monitor2@localhost", "p@tr0ll", "cam_agent.asl", "camera_2", url2, model)
+    monitor1 = BDI_agent_monitor(f"monitor1@{constants.IP_SERVER}", constants.PASS_XMPP, "cam_agent.asl",
+                                 "camera_1", url1, model)
+    monitor2 = BDI_agent_monitor(f"monitor2@{constants.IP_SERVER}", constants.PASS_XMPP, "cam_agent.asl",
+                                 "camera_2", url2, model)
     await monitor1.start()
     await monitor2.start()
 
