@@ -3,8 +3,8 @@
 // =================
 //     BELIEFS
 // =================
-// The agent is at the base and his battery is fully charged
-person(State)
+// The agent does not know what is watching
+// person(unknown).
 
 
 // =================
