@@ -6,12 +6,13 @@ import time
 import constants
 import asyncio
 from spade_bdi.bdi import BDIAgent
+from spade.behaviour import CyclicBehaviour
 
 
 def enviar_a_api(estado, camara_id):
     try:
         datos_camara = {"actividad": estado,
-                        "camara": camara_id,}
+                        "camara": camara_id}
         response = requests.post(constants.API_URL, json=datos_camara, timeout=2)
         print(f"API: [Cámara {camara_id}] Enviado -> {estado}")
         print(f"Estado: ", response.status_code)
@@ -21,10 +22,10 @@ def enviar_a_api(estado, camara_id):
         print(f"Error API [Cámara {camara_id}]: {e}")
 
 
-def detectar_fuego_rojo(frame):
+def detectar_fire_rojo(frame):
     """
-    Esta funcion es una abstraccion de una deteccion de fuego por medio del color rojo,
-    si hay suficientes pixeles rojos, se considera que hay fuego en el lugar
+    Esta funcion es una abstraccion de una deteccion de fire por medio del color rojo,
+    si hay suficientes pixeles rojos, se considera que hay fire en el lugar
     """
     # Convertir a HSV para detectar color
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -39,19 +40,19 @@ def detectar_fuego_rojo(frame):
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
     mask = mask1 + mask2
 
-    # Si hay suficientes pixeles rojos, consideramos que hay "fuego"
+    # Si hay suficientes pixeles rojos, consideramos que hay "fire"
     pixeles_rojos = cv2.countNonZero(mask)
-    return pixeles_rojos > 500 # Ajustar este umbral según tus pruebas
+    return pixeles_rojos > 500  # Ajustar este umbral según tus pruebas
 
 
-def procesar_frame(frame, model, last_box_cache, ultimo_estado, ultimo_envio, camara_id, COOLDOWN_API):
+def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id, COOLDOWN_API):
     """
     Esta función aisla la lógica para pasar cualquier frame de cualquier camara
     y que devuelva el frame dibujado y las variables de control actualizadas.
     """
-    fuego = detectar_fuego_rojo(frame)
-    if fuego:
-        print("PELIGRO, HAY FUEGO EN EL LUGAR")
+    fire = detectar_fire_rojo(frame)
+    if fire:
+        print("PELIGRO, HAY fire EN EL LUGAR")
 
     results_skeleton = model(frame, verbose=False, imgsz=320)
     last_box = []
@@ -119,12 +120,12 @@ def procesar_frame(frame, model, last_box_cache, ultimo_estado, ultimo_envio, ca
 
                 last_box.append((int(x1), int(y1), int(x2), int(y2), estado, color))
 
-                # logica de la API
+                # logica de la API. En desuso por los agentes
                 tiempo_actual = time.time()
-                if estado != ultimo_estado or (tiempo_actual - ultimo_envio > COOLDOWN_API):
-                    enviar_a_api(estado, camara_id)
-                    ultimo_estado = estado
-                    ultimo_envio = tiempo_actual
+                if estado != cam_state or (tiempo_actual - last_sent > COOLDOWN_API):
+                    # enviar_a_api(estado, camara_id)
+                    cam_state = estado
+                    last_sent = tiempo_actual
 
     # dibujar usando los datos nuevos (o el cache si no hay detecciones nuevas este frame)
     datos_a_dibujar = last_box if last_box else last_box_cache
@@ -133,83 +134,112 @@ def procesar_frame(frame, model, last_box_cache, ultimo_estado, ultimo_envio, ca
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         cv2.putText(frame, estado, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-    return frame, datos_a_dibujar, ultimo_estado, ultimo_envio, fuego
+    return frame, datos_a_dibujar, cam_state, last_sent, fire
+
+
+class BDI_agent_monitor(BDIAgent):
+    """
+    Initialize agents with the model to monitor on the cameras
+    Args:
+        BDIAgent (_type_): let us use BDI agents
+    """
+    def __init__(self, jid, passw, behaviour, cam_id, url, model):
+        super().__init__(jid, passw, behaviour)  # this is the agent
+
+        self.cam_id = cam_id
+        self.cap = cv2.VideoCapture(url)
+        self.model = model
+
+        self.frame_count = 0
+        self.cam_state = None
+        self.cache = []
+        self.last_sent = 0
+
+    async def setup(self):
+        print(f"Starting {self.jid} agent. Opening camera window...")
+        self.add_behaviour(VisionBehaviour())
+
+
+class VisionBehaviour(CyclicBehaviour):
+    async def run(self):
+        # the agent read the frames from his own camera
+        success, frame = self.agent.cap.read()
+
+        if not success:
+            print(f"Reconecting {self.agent.jid}...")
+            await asyncio.sleep(3)
+            return
+
+        self.agent.frame_count += 1
+
+        # every 5 frames the agent checks if the camera detects a person or fire
+        if self.agent.frame_count % 5 == 0:
+            # detects and draw bounding boxes for the person or fire
+            frame, self.agent.cache, self.agent.cam_state, self.agent.last_sent, fire = procesar_frame(
+                frame,
+                self.agent.model,
+                self.agent.cache,
+                self.agent.cam_state,
+                self.agent.last_sent,
+                self.agent.cam_id,
+                5.0)
+
+            # update beliefs of the agent, depending on what he detects
+            if fire:
+                self.agent.bdi.set_belief("fire")
+            else:
+                self.agent.bdi.remove_belief("fire")
+                if self.agent.cam_state:
+                    # temp atribute to search the active believe
+                    if not hasattr(self.agent, 'current_belief'):
+                        self.agent.current_belief = None
+
+                    # update only if it change it
+                    if self.agent.current_belief != self.agent.cam_state:
+                        if self.agent.current_belief:  # delete if there was a previous state
+                            self.agent.bdi.remove_belief(f"person(\"{self.agent.current_belief}\")")
+
+                        self.agent.bdi.set_belief(f"person(\"{self.agent.cam_state}\")")
+                        self.agent.current_belief = self.agent.cam_state
+
+        # redraw frames from cache
+        else:
+            for x1, y1, x2, y2, estado, color in self.agent.cache:
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(frame, estado, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        # resize window and show
+        frame_resized = cv2.resize(frame, (700, 420))
+        cv2.imshow(f"Monitoreo - {self.agent.jid}", frame_resized)
+
+        # refresh window
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            pass  # close window with Ctrl+C on terminal
+
+        # lend the control to asyncio, so the BDI can read messages
+        await asyncio.sleep(0.01)
 
 
 async def main():
     model = YOLO('yolov8n-pose.pt')
-    monitor = BDIAgent("monitor@localhost", "p@tr0ll", "cam_agent.asl")
-    await monitor.start()
 
     # Instanciar las camaras a usar
     url1 = f"rtsp://{constants.USUARIOS[0]}:{constants.CONTRASENIA}@{constants.IPS[0]}/stream2"
     url2 = f"rtsp://{constants.USUARIOS[1]}:{constants.CONTRASENIA}@{constants.IPS[1]}/stream2"
-    cap1 = cv2.VideoCapture(url1)
-    cap2 = cv2.VideoCapture(url2)
 
-    frame_count = 0
+    monitor1 = BDI_agent_monitor("monitor1@localhost", "p@tr0ll", "cam_agent.asl", "camera_1", url1, model)
+    monitor2 = BDI_agent_monitor("monitor2@localhost", "p@tr0ll", "cam_agent.asl", "camera_2", url2, model)
+    await monitor1.start()
+    await monitor2.start()
 
-    # Controles independientes por camara
-    estado_cam1, envio_cam1, cache_cam1 = None, 0, []
-    estado_cam2, envio_cam2, cache_cam2 = None, 0, []
-    COOLDOWN_API = 5.0
-
-    NOMBRE_VENTANA = "Monitoreo Dual - Uso de Silla/Cama"
-    cv2.namedWindow(NOMBRE_VENTANA, cv2.WINDOW_NORMAL)
-
-    while True:
-        # Leer de ambas camaras al mismo tiempo
-        success1, frame1 = cap1.read()
-        success2, frame2 = cap2.read()
-
-        # reconexion si alguna falla
-        if not success1 or not success2:
-            print('Reconectando camaras...')
-            cap1.release()
-            cap2.release()
-            time.sleep(3)
-            cap1 = cv2.VideoCapture(url1)
-            cap2 = cv2.VideoCapture(url2)
-            continue
-
-        frame_count += 1
-
-        # Procesamos cada 5 frames para no matar el CPU
-        if frame_count % 5 == 0:
-            # Procesar camara 1
-            frame1, cache_cam1, estado_cam1, envio_cam1, fuego1 = procesar_frame(frame1, model, cache_cam1,
-                                                                                 estado_cam1, envio_cam1, 1,
-                                                                                 COOLDOWN_API)
-
-            # Procesar camara 2
-            frame2, cache_cam2, estado_cam2, envio_cam2, fuego2 = procesar_frame(frame2, model, cache_cam2,
-                                                                                 estado_cam2, envio_cam2, 2,
-                                                                                 COOLDOWN_API)
-        else:
-            # En frames sin IA, solo redibujar el cache para evitar parpadeos
-            for x1, y1, x2, y2, estado, color in cache_cam1:
-                cv2.rectangle(frame1, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame1, estado, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-            for x1, y1, x2, y2, estado, color in cache_cam2:
-                cv2.rectangle(frame2, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame2, estado, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-        # Redimensionamos a un tamanio manejable
-        frame1_resized = cv2.resize(frame1, (700, 420))
-        frame2_resized = cv2.resize(frame2, (700, 420))
-
-        # unir horizontalmente los frames
-        frame_unido = np.hstack((frame1_resized, frame2_resized))
-        cv2.imshow(NOMBRE_VENTANA, frame_unido)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap1.release()
-    cap2.release()
-    cv2.destroyAllWindows()
+    try:
+        while True:
+            await asyncio.sleep(2)
+    except KeyboardInterrupt:
+        print("WARNING. Couldn't connect to cameras")
+        await monitor1.stop()
+        await monitor2.stop()
 
 
 if __name__ == "__main__":
-    asyncio.run(main)
+    asyncio.run(main())
