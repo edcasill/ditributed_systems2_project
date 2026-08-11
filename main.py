@@ -136,7 +136,7 @@ def procesar_frame(frame, model, last_box_cache, ultimo_estado, ultimo_envio, ca
     return frame, datos_a_dibujar, ultimo_estado, ultimo_envio, fuego
 
 
-async def video_model():
+async def main():
     model = YOLO('yolov8n-pose.pt')
     monitor = BDIAgent("monitor@localhost", "p@tr0ll", "cam_agent.asl")
     await monitor.start()
@@ -212,4 +212,4 @@ async def video_model():
 
 
 if __name__ == "__main__":
-    video_model()
+    asyncio.run(main)
