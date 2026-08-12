@@ -258,9 +258,9 @@ async def main():
     url2 = f"rtsp://{constants.USUARIOS[1]}:{constants.CONTRASENIA}@{constants.IPS[1]}/stream2"
 
     monitor1 = BDI_agent_monitor(f"monitor1@{constants.IP_SERVER}", constants.PASS_XMPP, "cam_agent.asl",
-                                 "camera_1", url1, model)
+                                 "Camara_1", url1, model)
     monitor2 = BDI_agent_monitor(f"monitor2@{constants.IP_SERVER}", constants.PASS_XMPP, "cam_agent.asl",
-                                 "camera_2", url2, model)
+                                 "Camara_2", url2, model)
     await monitor1.start()
     await monitor2.start()
 

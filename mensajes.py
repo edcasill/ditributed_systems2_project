@@ -10,14 +10,18 @@ from spade.behaviour import CyclicBehaviour
 import json
 from spade.message import Message
 
+
 class FipaReceiver(CyclicBehaviour):
     async def run(self):
         # Espera recibir mensajes wait to receive messages
-        msg = await self.receive(timeout=1.0)
+        msg = await self.receive(timeout=2.0)
         if msg:
             # SPADE extrae los metadatos FIPA automaticamente y los pone en un diccionario
             performative = msg.metadata.get("performative")
             Content = msg.body
+            ont = msg.metadata.get("ontology")
+            print(ont)
+            print(msg)
 
             print(f"[{self.agent.jid}] FIPA message received:")
             print(f" - Performative: {performative}")
@@ -27,14 +31,18 @@ class FipaReceiver(CyclicBehaviour):
             if performative == "request":
                 # Si Java hace una petición (REQUEST), inyectamos una orden al motor BDI
                 self.agent.bdi.set_belief(f'java_command("{Content}")')
+                print("hola")
                 
             elif performative == "inform":
                 # Si Java solo te informa de un estado (INFORM)
                 self.agent.bdi.set_belief(f'java_notification("{Content}")')
+                print('vemos')
                 
             elif performative == "query-ref":
                 # Si Java te pregunta algo
                 pass
+        else:
+            print('no')
 
 
 class BDI_agent_monitor(BDIAgent):

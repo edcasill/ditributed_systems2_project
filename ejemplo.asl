@@ -26,7 +26,7 @@ person(unknown).
     .send("mente@192.168.0.202", achieve, person_state("prueba_red")).
 
 // Reaction to JAVA agent
-+java_command("deactivate_alarm") <-
-    .print("Order received, deactivating alarm...");
++java_command("detectar_fuego") <-
+    .print("Order received, deactivating alarm...").
     // we can remoce previous beliefs
-    -fire.
+    // -fire.
