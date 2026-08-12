@@ -4,7 +4,7 @@
 //     BELIEFS
 // =================
 // The agent does not know what is watching
-// person(unknown).
+person(unknown).
 
 
 // =================
@@ -20,20 +20,10 @@
 // The plan (+!) he's going to implement to achieve his goal
 
 // start monitor
-+!start_monitor <-
-    .print("Monitoring enviroment").
-
-// if the agent gets the belief to monitor people
-+person(State) : not fire <-
-    .print("Person  (", State, ") detected, informing to master");
-    // .send("master@localhost", tell, person_state(State)).
-    .send("mente@192.168.0.202", achieve, person_state(State)).
-
-// Plan B: fire detected
-+fire : true <-
-    .print("ALERT! Fire dected");
-    // .send("master@localhost", tell, emergency).
-    .send("mente@192.168.0.202", achieve, emergency).
++!start_monitor : person(unknown)<-
+    .print("Monitoring enviroment");
+    .print("Person  (prueba_red) detected, informing to master");
+    .send("mente@192.168.0.202", achieve, person_state("prueba_red")).
 
 // Reaction to JAVA agent
 +java_command("deactivate_alarm") <-

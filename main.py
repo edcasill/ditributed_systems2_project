@@ -173,7 +173,7 @@ class BDI_agent_monitor(BDIAgent):
         BDIAgent (_type_): let us use BDI agents
     """
     def __init__(self, jid, passw, behaviour, cam_id, url, model):
-        super().__init__(jid, passw, behaviour)  # this is the agent
+        super().__init__(jid, passw, behaviour, verify_security=False)  # this is the agent
 
         self.cam_id = cam_id
         self.cap = cv2.VideoCapture(url)
