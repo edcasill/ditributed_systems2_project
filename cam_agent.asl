@@ -27,13 +27,17 @@
 +person(State) : not fire <-
     .print("Person  (", State, ") detected, informing to master");
     // .send("master@localhost", tell, person_state(State)).
-    .send("mente@192.168.0.202", achieve, person_state(State)).
+    // .send("mente@192.168.0.202", achieve, person_state(State)).
+    // Parámetros: Receiver, Content, Performative, Protocol, Language, Ontology
+    .enviar_mensaje_java("mente@192.168.0.202", person_state(State), "request", "fipa-request", "es", "sensores").
 
 // Plan B: fire detected
 +fire : true <-
     .print("ALERT! Fire dected");
     // .send("master@localhost", tell, emergency).
-    .send("mente@192.168.0.202", achieve, emergency).
+    // .send("mente@192.168.0.202", achieve, emergency).
+    // Parámetros: Receiver, Content, Performative, Protocol, Language, Ontology
+    .enviar_mensaje_java("mente@192.168.0.202", emergency, "request", "fipa-request", "es", "sensores").
 
 // Reaction to JAVA agent
 +java_command("deactivate_alarm") <-

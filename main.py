@@ -11,19 +11,6 @@ import json
 from spade.message import Message
 
 
-def enviar_a_api(estado, camara_id):
-    try:
-        datos_camara = {"actividad": estado,
-                        "camara": camara_id}
-        response = requests.post(constants.API_URL, json=datos_camara, timeout=2)
-        print(f"API: [Cámara {camara_id}] Enviado -> {estado}")
-        print(f"Estado: ", response.status_code)
-        print(f"Respuesta de java: ", response.json())
-
-    except Exception as e:
-        print(f"Error API [Cámara {camara_id}]: {e}")
-
-
 def detect_fire_red(frame):
     """
     Esta funcion es una abstraccion de una deteccion de fire por medio del color rojo,
@@ -33,9 +20,20 @@ def detect_fire_red(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     # Rangos para el color rojo (tiene dos rangos en HSV)
-    lower_red1 = np.array([0, 120, 70])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 120, 70])
+    # lower_red1 = np.array([0, 120, 70])  # estos se supone son los ideales para el fuego
+    # upper_red1 = np.array([10, 255, 255])
+    # lower_red2 = np.array([170, 120, 70])  # estos se supone son los ideales para el fuego
+    # upper_red2 = np.array([180, 255, 255])
+
+    # funcionan pero muy cerca o grande
+    # lower_red1 = np.array([0, 150, 150])
+    # upper_red1 = np.array([8, 255, 255])
+    # lower_red2 = np.array([175, 150, 150])
+    # upper_red2 = np.array([180, 255, 255])
+
+    lower_red1 = np.array([0, 135, 110])
+    upper_red1 = np.array([9, 255, 255])
+    lower_red2 = np.array([173, 135, 110])
     upper_red2 = np.array([180, 255, 255])
 
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
@@ -45,6 +43,28 @@ def detect_fire_red(frame):
     # Si hay suficientes pixeles rojos, consideramos que hay "fire"
     pixeles_rojos = cv2.countNonZero(mask)
     return pixeles_rojos > 500  # Ajustar este umbral según tus pruebas
+
+
+def enviar_mensaje_java(agente, receiver, content, performative, protocol, language, ontology):
+    """
+    Agrega los metadatos a los mensajes que se envian a java
+    Returns:
+        _type_: _description_
+    """
+    # Se usa .strip('"') por si AgentSpeak manda los textos con comillas literales
+    receiver_str = str(receiver).strip('"')
+
+    msg = Message(to=receiver_str)
+    msg.body = str(content)
+    # Metadatos para que el agente en Java los pueda interpretar
+    msg.set_metadata("performative", str(performative).strip('"'))
+    msg.set_metadata("protocol", str(protocol).strip('"'))
+    msg.set_metadata("language", str(language).strip('"'))
+    msg.set_metadata("ontology", str(ontology).strip('"'))
+
+    # Enviar usando el cliente del agente en segundo plano
+    asyncio.create_task(agente.client.send(msg))
+    return True
 
 
 def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id, COOLDOWN_API):
@@ -166,30 +186,6 @@ class FipaReceiver(CyclicBehaviour):
                 pass
 
 
-class BDI_agent_monitor(BDIAgent):
-    """
-    Initialize agents with the model to monitor on the cameras
-    Args:
-        BDIAgent (_type_): let us use BDI agents
-    """
-    def __init__(self, jid, passw, behaviour, cam_id, url, model):
-        super().__init__(jid, passw, behaviour, verify_security=False)  # this is the agent
-
-        self.cam_id = cam_id
-        self.cap = cv2.VideoCapture(url)
-        self.model = model
-
-        self.frame_count = 0
-        self.cam_state = None
-        self.cache = []
-        self.last_sent = 0
-
-    async def setup(self):
-        print(f"Starting {self.jid} agent. Opening camera window...")
-        self.add_behaviour(VisionBehaviour())
-        self.add_behaviour(FipaReceiver())
-
-
 class VisionBehaviour(CyclicBehaviour):
     async def run(self):
         # the agent read the frames from his own camera
@@ -248,6 +244,32 @@ class VisionBehaviour(CyclicBehaviour):
 
         # lend the control to asyncio, so the BDI can read messages
         await asyncio.sleep(0.01)
+
+
+class BDI_agent_monitor(BDIAgent):
+    """
+    Initialize agents with the model to monitor on the cameras
+    Args:
+        BDIAgent (_type_): let us use BDI agents
+    """
+    def __init__(self, jid, passw, behaviour, cam_id, url, model):
+        super().__init__(jid, passw, behaviour, verify_security=False)  # this is the agent
+
+        self.cam_id = cam_id
+        self.cap = cv2.VideoCapture(url)
+        self.model = model
+
+        self.frame_count = 0
+        self.cam_state = None
+        self.cache = []
+        self.last_sent = 0
+        # permite al archivo .asl reconocer la funcion de python
+        self.bdi.set_action("enviar_mensaje_java", enviar_mensaje_java)
+
+    async def setup(self):
+        print(f"Starting {self.jid} agent. Opening camera window...")
+        self.add_behaviour(VisionBehaviour())
+        self.add_behaviour(FipaReceiver())
 
 
 async def main():
