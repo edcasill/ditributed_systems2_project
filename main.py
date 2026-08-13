@@ -7,7 +7,7 @@ import constants
 import asyncio
 from spade_bdi.bdi import BDIAgent
 from spade.behaviour import CyclicBehaviour
-import json
+import agentspeak
 from spade.message import Message
 
 
@@ -26,15 +26,17 @@ def detect_fire_red(frame):
     # upper_red2 = np.array([180, 255, 255])
 
     # funcionan pero muy cerca o grande
-    # lower_red1 = np.array([0, 150, 150])
-    # upper_red1 = np.array([8, 255, 255])
-    # lower_red2 = np.array([175, 150, 150])
-    # upper_red2 = np.array([180, 255, 255])
+    lower_red1 = np.array([0, 150, 150])
+    upper_red1 = np.array([8, 255, 255])
+    lower_red2 = np.array([175, 150, 150])
+    upper_red2 = np.array([180, 255, 255])
 
+    """
     lower_red1 = np.array([0, 135, 110])
     upper_red1 = np.array([9, 255, 255])
     lower_red2 = np.array([173, 135, 110])
     upper_red2 = np.array([180, 255, 255])
+    """
 
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
@@ -65,6 +67,18 @@ def enviar_mensaje_java(agente, receiver, content, performative, protocol, langu
     # Enviar usando el cliente del agente en segundo plano
     asyncio.create_task(agente.client.send(msg))
     return True
+
+
+def calcula_puntaje(umbral_deteccion, puntaje_cuerpo, nariz, ojo_i, ojo_d, oreja_i, oreja_d, confianza_hombro, confianza_cadera, confianza_rodilla):
+    if nariz > umbral_deteccion: puntaje_cuerpo += 1
+    if ojo_i > umbral_deteccion: puntaje_cuerpo += 1
+    if ojo_d > umbral_deteccion: puntaje_cuerpo += 1
+    if oreja_i > umbral_deteccion: puntaje_cuerpo += 1
+    if oreja_d > umbral_deteccion: puntaje_cuerpo += 1
+    if confianza_hombro > umbral_deteccion: puntaje_cuerpo += 1
+    if confianza_cadera > umbral_deteccion: puntaje_cuerpo += 1
+    if confianza_rodilla > umbral_deteccion: puntaje_cuerpo += 1
+    return puntaje_cuerpo
 
 
 def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id, COOLDOWN_API):
@@ -102,6 +116,26 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
                     y_rodilla = kpts[13][1]
 
                     confianza_rodilla = kpts[13][2]  # se usa la rodilla de referencia para la pose
+                    nariz = kpts[0][2]  # el valor de confianza nos dice que esta ahi
+                    ojo_i = kpts[1][2]
+                    ojo_d = kpts[2][2]
+                    oreja_i = kpts[3][2]
+                    oreja_d = kpts[4][2]
+                    confianza_hombro = kpts[5][2]
+                    confianza_cadera = kpts[11][2]
+
+                    umbral_deteccion = 0.5
+                    puntaje_cuerpo = 0
+                    puntaje_cuerpo = calcula_puntaje(umbral_deteccion,
+                                                     puntaje_cuerpo,
+                                                     nariz,
+                                                     ojo_i,
+                                                     ojo_d,
+                                                     oreja_i,
+                                                     oreja_d,
+                                                     confianza_hombro,
+                                                     confianza_cadera,
+                                                     confianza_rodilla)
 
                     dif_y_torso = abs(y_hombro - y_cadera)  # tomamos en cuenta la posicion del torso
                     dif_x_torso = abs(x_hombro - x_cadera)
@@ -144,10 +178,18 @@ def procesar_frame(frame, model, last_box_cache, cam_state, last_sent, camara_id
 
                 # logica de la API. En desuso por los agentes
                 tiempo_actual = time.time()
-                if estado != cam_state or (tiempo_actual - last_sent > COOLDOWN_API):
-                    # enviar_a_api(estado, camara_id)
-                    cam_state = estado
+                puntaje_str = str(puntaje_cuerpo)
+                # if estado != cam_state or (tiempo_actual - last_sent > COOLDOWN_API):
+                if tiempo_actual - last_sent > COOLDOWN_API:
+                    cam_state = puntaje_str
                     last_sent = tiempo_actual
+                """
+                if puntaje_str != cam_state or (tiempo_actual - last_sent > COOLDOWN_API):
+                    # enviar_a_api(estado, camara_id)
+                    # cam_state = estado
+                    cam_state = puntaje_str
+                    last_sent = tiempo_actual
+                """
 
     # dibujar usando los datos nuevos (o el cache si no hay detecciones nuevas este frame)
     datos_a_dibujar = last_box if last_box else last_box_cache
@@ -187,15 +229,26 @@ class FipaReceiver(CyclicBehaviour):
 
 
 class VisionBehaviour(CyclicBehaviour):
+    """
+    Permite que el agente 'vea' con opencv y ademas nos pueda generar las ventanas para nosotros
+    ver lo que ve el agente por su camara asignada
+    Args:
+        CyclicBehaviour (_type_): _description_
+    """
     async def run(self):
         # the agent read the frames from his own camera
         success, frame = self.agent.cap.read()
 
         if not success:
+            self.agent.bdi.remove_belief("camara(encendida)")
+            self.agent.bdi.set_belief("camara(apagada)")
             print(f"Reconecting {self.agent.jid}...")
             await asyncio.sleep(3)
             return
 
+        # detecta la camara encendida y lo hace saber al agente
+        self.agent.bdi.remove_belief("camara(apagada)")
+        self.agent.bdi.set_belief("camara(encendida)")
         self.agent.frame_count += 1
 
         # every 5 frames the agent checks if the camera detects a person or fire
@@ -222,10 +275,11 @@ class VisionBehaviour(CyclicBehaviour):
 
                     # update only if it change it
                     if self.agent.current_belief != self.agent.cam_state:
+                        print(f"[{self.agent.jid} PYTHON DEBUG] Enviando creencia person({self.agent.cam_state}) a AgentSpeak")
                         if self.agent.current_belief:  # delete if there was a previous state
-                            self.agent.bdi.remove_belief(f"person(\"{self.agent.current_belief}\")")
+                            self.agent.bdi.remove_belief(f"person({self.agent.current_belief})")
 
-                        self.agent.bdi.set_belief(f"person(\"{self.agent.cam_state}\")")
+                        self.agent.bdi.set_belief(f"person({self.agent.cam_state})")
                         self.agent.current_belief = self.agent.cam_state
 
         # redraw frames from cache
@@ -243,28 +297,71 @@ class VisionBehaviour(CyclicBehaviour):
             pass  # close window with Ctrl+C on terminal
 
         # lend the control to asyncio, so the BDI can read messages
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.15)
 
 
 class BDI_agent_monitor(BDIAgent):
     """
     Initialize agents with the model to monitor on the cameras
-    Args:
-        BDIAgent (_type_): let us use BDI agents
     """
     def __init__(self, jid, passw, behaviour, cam_id, url, model):
-        super().__init__(jid, passw, behaviour, verify_security=False)  # this is the agent
+        super().__init__(jid, passw, behaviour, verify_security=False)
 
         self.cam_id = cam_id
         self.cap = cv2.VideoCapture(url)
         self.model = model
-
         self.frame_count = 0
         self.cam_state = None
         self.cache = []
         self.last_sent = 0
-        # permite al archivo .asl reconocer la funcion de python
-        self.bdi.set_action("enviar_mensaje_java", enviar_mensaje_java)
+
+    # --- DEBE ESTAR AL MISMO NIVEL QUE __init__ ---
+    def add_custom_actions(self, actions):
+        @actions.add(".enviar_mensaje_java", 6)
+        def _enviar_mensaje_java(agent, term, intention):
+            try:
+                # Extraer y "aterrizar" (grounded) los 6 parámetros desde AgentSpeak
+                receiver = agentspeak.grounded(term.args[0], intention.scope)
+                content = agentspeak.grounded(term.args[1], intention.scope)
+                performative = agentspeak.grounded(term.args[2], intention.scope)
+                protocol = agentspeak.grounded(term.args[3], intention.scope)
+                language = agentspeak.grounded(term.args[4], intention.scope)
+                ontology = agentspeak.grounded(term.args[5], intention.scope)
+                
+                # Limpiar comillas extras y armar el mensaje
+                receiver_str = str(receiver).strip('"').strip("'")
+                msg = Message(to=receiver_str)
+
+                content_str = str(content)
+                
+                if content_str.startswith("estado("):
+                    # Interceptamos "estado(true, 8, true)" y extraemos los 3 valores puros
+                    valores = content_str.replace("estado(", "").replace(")", "").split(",")
+                    fuego_val = valores[0].strip().lower()
+                    persona_val = valores[1].strip()
+                    camara_val = valores[2].strip().lower()
+                    
+                    # Armamos el string en formato JSON con comillas dobles estrictas para Java
+                    msg.body = f'{{"fuego": {fuego_val}, "persona": {persona_val}, "camara_ok": {camara_val}}}'
+                else:
+                    # Comportamiento normal (envía el puntaje o "emergency" de los reportes del foco)
+                    msg.body = content_str
+                
+                # msg.body = str(content)
+                msg.set_metadata("performative", str(performative).strip('"').strip("'"))
+                msg.set_metadata("protocol", str(protocol).strip('"').strip("'"))
+                msg.set_metadata("language", str(language).strip('"').strip("'"))
+                msg.set_metadata("ontology", str(ontology).strip('"').strip("'"))
+                
+                # Enviar usando el motor BDI del agente (self.bdi)
+                asyncio.create_task(self.bdi.send(msg))
+                
+            except Exception as e:
+                # Si algo falla en Python, esto lo imprimirá en consola en lugar de crashear AgentSpeak
+                print(f"[{self.jid}] Error interno al enviar mensaje a Java: {e}")
+            
+            # Obligatorio para las acciones personalizadas en AgentSpeak
+            yield
 
     async def setup(self):
         print(f"Starting {self.jid} agent. Opening camera window...")

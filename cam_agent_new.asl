@@ -38,44 +38,44 @@ tarea_actual(ninguna).
 // REACCIÓN A ORDENES DE JAVA (Mente)
 // ============================================
 
-// 1. Solicitud explícita de estado (Envía el JSON)
-+java_command(get_state) <-
-    -java_command(get_state); // Consume la orden para no repetirla
-    .print(">>> Java solicita reporte de estado (GET_STATE) <<<");
-    !responder_estado.
+// 1. Solicitud explícita de estado (Envía el JSON) (con thread)
++java_request(get_state, Thread) <-
+    -java_request(get_state, Thread); // Consume la orden
+    .print(">>> Java solicita reporte de estado con thread: ", Thread, " <<<");
+    !responder_estado(Thread).
 
-// 2. Órdenes para cambiar de tarea (SET_TASK)
-+java_command(set_task_fire) <-
-    -java_command(set_task_fire);
-    -+tarea_actual(fire); // -+ actualiza la creencia
-    .print(">>> Cambiando tarea a: FIRE <<<").
+// Órdenes SET_TASK con thread
++java_request(set_task_fire, Thread) <-
+    -java_request(set_task_fire, Thread);
+    -+tarea_actual(fire);
+    .print(">>> Cambiando tarea a: FIRE (thread: ", Thread, ") <<<").
 
-+java_command(set_task_person) <-
-    -java_command(set_task_person);
++java_request(set_task_person, Thread) <-
+    -java_request(set_task_person, Thread);
     -+tarea_actual(person);
-    .print(">>> Cambiando tarea a: PERSON <<<").
+    .print(">>> Cambiando tarea a: PERSON (thread: ", Thread, ") <<<").
 
-+java_command(set_task_none) <-
-    -java_command(set_task_none);
++java_request(set_task_none, Thread) <-
+    -java_request(set_task_none, Thread);
     -+tarea_actual(ninguna);
-    .print(">>> Cambiando tarea a: NINGUNA (Silencio total) <<<").
+    .print(">>> Cambiando tarea a: NINGUNA (thread: ", Thread, ") <<<").
 
 // ============================================
 // META: !responder_estado (Evalúa y Envía el JSON)
 // ============================================
 
-+!responder_estado : fire & person(Score) & camara(EstatusCam) <-
++!responder_estado(Thread) : fire & person(Score) & camara(EstatusCam) <-
     ?msg_performative(Perf); ?msg_protocol(Prot); ?msg_language(Lang); ?msg_ontology(Ont);
-    .enviar_mensaje_java("mente@192.168.0.202", estado(true, Score, EstatusCam), Perf, Prot, Lang, Ont).
+    .enviar_mensaje_java_thread("mente@192.168.0.202", estado(true, Score, EstatusCam), Perf, Prot, Lang, Ont, Thread).
 
-+!responder_estado : fire & not person(_) & camara(EstatusCam) <-
++!responder_estado(Thread) : fire & not person(_) & camara(EstatusCam) <-
     ?msg_performative(Perf); ?msg_protocol(Prot); ?msg_language(Lang); ?msg_ontology(Ont);
-    .enviar_mensaje_java("mente@192.168.0.202", estado(true, 0, EstatusCam), Perf, Prot, Lang, Ont).
+    .enviar_mensaje_java_thread("mente@192.168.0.202", estado(true, 0, EstatusCam), Perf, Prot, Lang, Ont, Thread).
 
-+!responder_estado : not fire & person(Score) & camara(EstatusCam) <-
++!responder_estado(Thread) : not fire & person(Score) & camara(EstatusCam) <-
     ?msg_performative(Perf); ?msg_protocol(Prot); ?msg_language(Lang); ?msg_ontology(Ont);
-    .enviar_mensaje_java("mente@192.168.0.202", estado(false, Score, EstatusCam), Perf, Prot, Lang, Ont).
+    .enviar_mensaje_java_thread("mente@192.168.0.202", estado(false, Score, EstatusCam), Perf, Prot, Lang, Ont, Thread).
 
-+!responder_estado : not fire & not person(_) & camara(EstatusCam) <-
++!responder_estado(Thread) : not fire & not person(_) & camara(EstatusCam) <-
     ?msg_performative(Perf); ?msg_protocol(Prot); ?msg_language(Lang); ?msg_ontology(Ont);
-    .enviar_mensaje_java("mente@192.168.0.202", estado(false, 0, EstatusCam), Perf, Prot, Lang, Ont).
+    .enviar_mensaje_java_thread("mente@192.168.0.202", estado(false, 0, EstatusCam), Perf, Prot, Lang, Ont, Thread).

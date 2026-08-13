@@ -24,7 +24,7 @@ person(unknown).
     .print("Monitoring enviroment");
     .print("Person  (prueba_red) detected, informing to master");
     // .send("mente@192.168.0.202", achieve, person_state("prueba_red")).
-    .send("monitor2@192.168.0.202", achieve, person_state("prueba_red")).
+    .send("monitor@192.168.0.202", achieve, person_state("prueba_red")).
 
 // Reaction to JAVA agent
 +java_command("detectar_fuego") <-
