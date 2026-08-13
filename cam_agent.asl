@@ -1,42 +1,142 @@
-// This is an example of how to do BDI programming
+// ============================================================
+// CREENCIAS INICIALES
+// ============================================================
 
-// =================
-//     BELIEFS
-// =================
-// The agent does not know what is watching
-// person(unknown).
+tarea_actual("ninguna").
+
+camara(false).
+fuego(false).
+person(0).
 
 
-// =================
-//     DESIRES
-// =================
-// When the agent born, it has the desire (!goal) to be informing about the cameras
+// ============================================================
+// RECEPCION DE REQUEST DEL PUENTE
+// ============================================================
 
-!start_monitor.
++bridge_request(get_state) <-
+    .print("========================================");
+    .print("[BDI] PLAN get_state EJECUTADO");
+    .print("[BDI] Obteniendo estado actual");
+    .print("================================");
+    -bridge_request(get_state);
+    !responder_estado.
 
-// =================
-//     INTENTIONS
-// =================
-// The plan (+!) he's going to implement to achieve his goal
++bridge_request(set_task_fire) <-
+    .print("[BDI] PLAN set_task_fire EJECUTADO");
+    -bridge_request(set_task_fire);
+    -tarea_actual(_);
+    +tarea_actual("fire").
 
-// start monitor
-+!start_monitor <-
-    .print("Monitoring enviroment").
++bridge_request(set_task_person) <-
+    .print("[BDI] PLAN set_task_person EJECUTADO");
+    -bridge_request(set_task_person);
+    -tarea_actual(_);
+    +tarea_actual("person").
 
-// if the agent gets the belief to monitor people
-+person(State) : not fire <-
-    .print("Person  (", State, ") detected, informing to master");
-    // .send("master@localhost", tell, person_state(State)).
-    .send("puente@192.168.0.202", achieve, person_state(State)).
++bridge_request(set_task_none) <-
+    .print("[BDI] PLAN set_task_none EJECUTADO");
+    -bridge_request(set_task_none);
+    -tarea_actual(_);
+    +tarea_actual("ninguna").
 
-// Plan B: fire detected
-+fire : true <-
-    .print("ALERT! Fire dected");
-    // .send("master@localhost", tell, emergency).
-    .send("puente@192.168.0.202", achieve, emergency).
++bridge_request(deactivate_alarm) <-
+    .print("[BDI] PLAN deactivate_alarm EJECUTADO");
+    -bridge_request(deactivate_alarm);
+    -fuego(_);
+    +fuego(false);
+    !responder_estado.
 
-// Reaction to JAVA agent
-+java_command("deactivate_alarm") <-
-    .print("Order received, deactivating alarm...");
-    // we can remoce previous beliefs
-    -fire.
+
+// ============================================================
+// INFORM DEL PUENTE
+// ============================================================
+
++bridge_notification(Content) <-
+    .print("[BDI] INFORM recibido del puente: ", Content).
+
+
+// ============================================================
+// ACTUALIZACION DEL ESTADO DE CAMARA
+// ============================================================
+
++actualizar_camara(Estado) <-
+    .print(
+        "[BDI] PLAN actualizar_camara EJECUTADO. Estado=",
+        Estado
+    );
+    -camara(_);
+    +camara(Estado);
+    -actualizar_camara(Estado);
+    .print("[BDI] camara actualizada").
+
+// ============================================================
+// ACTUALIZACION DEL ESTADO DE FUEGO
+// ============================================================
+
++actualizar_fuego(Estado) <-
+    .print(
+        "[BDI] PLAN actualizar_fuego EJECUTADO. Estado=",
+        Estado
+    );
+    -fuego(_);
+    +fuego(Estado);
+    -actualizar_fuego(Estado);
+    .print("[BDI] fuego actualizado").
+
+// ============================================================
+// ACTUALIZACION DEL PUNTAJE DE PERSONA
+// ============================================================
+
++actualizar_persona(Score) <-
+    .print(
+        "[BDI] PLAN actualizar_persona EJECUTADO. Score=",
+        Score
+    );
+    -person(_);
+    +person(Score);
+    -actualizar_persona(Score);
+    .print("[BDI] persona actualizada").
+
+// ============================================================
+// RESPONDER ESTADO AL PUENTE
+// ============================================================
+
++!responder_estado : fuego(Fuego) & person(Score) & camara(CamaraOk) <-
+    .print("========================================");
+    .print("[BDI] RESPONDER_ESTADO EJECUTADO");
+    .print("[BDI] Fuego=", Fuego);
+    .print("[BDI] Persona=", Score);
+    .print("[BDI] Camara=", CamaraOk);
+    .print("[BDI] Preparando envio al puente");
+
+    .enviar_mensaje_puente(
+        "puente@192.168.0.202",
+        estado(Fuego, Score, CamaraOk),
+        "inform",
+        "fipa-inform",
+        "es",
+        "sensores"
+    ).
+
+
+// ============================================================
+// REPORTES ESPONTANEOS DE CAMBIOS
+// ============================================================
+
++fuego(true) : tarea_actual("fire") <-
+    .print("[BDI] Reportando fuego detectado");
+    !responder_estado.
+
++person(Score) : tarea_actual("person") <-
+    .print("[BDI] Reportando cambio de puntaje: ", Score);
+    !responder_estado.
+
+
+// ============================================================
+// CONSULTA QUERY-REF DEL PUENTE
+// ============================================================
+
++bridge_query(get_state) <-
+    .print("[BDI] QUERY-REF get_state recibido");
+    -bridge_query(get_state);
+    !responder_estado.
