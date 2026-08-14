@@ -21,17 +21,17 @@ person(0).
     -bridge_request(get_state);
     !responder_estado.
 
-+bridge_request(set_task_fire) <-
-    .print("[BDI] PLAN set_task_fire EJECUTADO");
-    -bridge_request(set_task_fire);
++bridge_request(detecta_fuego) <-
+    .print("[BDI] PLAN detecta_fuego EJECUTADO");
+    -bridge_request(detecta_fuego);
     -tarea_actual(_);
-    +tarea_actual("fire").
+    +tarea_actual("detecta_fuego").
 
-+bridge_request(set_task_person) <-
-    .print("[BDI] PLAN set_task_person EJECUTADO");
-    -bridge_request(set_task_person);
++bridge_request(detecta_persona) <-
+    .print("[BDI] PLAN detecta_persona EJECUTADO");
+    -bridge_request(detecta_persona);
     -tarea_actual(_);
-    +tarea_actual("person").
+    +tarea_actual("detecta_persona").
 
 +bridge_request(set_task_none) <-
     .print("[BDI] PLAN set_task_none EJECUTADO");
@@ -123,11 +123,11 @@ person(0).
 // REPORTES ESPONTANEOS DE CAMBIOS
 // ============================================================
 
-+fuego(true) : tarea_actual("fire") <-
++fuego(true) : tarea_actual("detecta_fuego") <-
     .print("[BDI] Reportando fuego detectado");
     !responder_estado.
 
-+person(Score) : tarea_actual("person") <-
++person(Score) : tarea_actual("detecta_persona") <-
     .print("[BDI] Reportando cambio de puntaje: ", Score);
     !responder_estado.
 
