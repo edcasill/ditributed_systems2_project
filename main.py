@@ -224,19 +224,42 @@ class FipaReceiver(CyclicBehaviour):
 
             if performative == "request":
                 if content == "get_state":
-                    print(f"[{self.agent.jid}] REQUEST -> "
-                          f"bridge_request(get_state)")
+                    print(f"[{self.agent.jid}] REQUEST -> bridge_request(get_state)")
                     self.agent.bdi.set_belief("bridge_request", "get_state",)
+
                 elif content == "detecta_fuego":
                     print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_fuego)")
+                    # self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
+                    # raise Exception("SI LLEGO EL REQUEST FUEGO")
+                    self.agent.active_task = "detecta_fuego"
+
+                    # Sincronizar con el BDI el ultimo estado conocido de fuego
+                    if self.agent.current_fire is not None:
+                        print(f"[{self.agent.jid}] Sincronizando ultimo estado de fuego: {self.agent.current_fire}")
+                        self.agent.bdi.set_belief("actualizar_fuego", bool(self.agent.current_fire))
                     self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
+                
                 elif content == "detecta_persona":
                     print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_persona)")
+                    # self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
+                    # raise Exception("SI LLEGO EL REQUEST PERSONA")\
+                    self.agent.active_task = "detecta_persona"
+
+                     # Sincronizar con el BDI el ultimo score conocido
+                    if self.agent.current_person_score is not None:
+                        print(f"[{self.agent.jid}] Sincronizando ultimo score conocido: {self.agent.current_person_score}")
+                        self.agent.bdi.set_belief("actualizar_persona", int(self.agent.current_person_score))
                     self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
+                
                 elif content == "set_task_none":
                     self.agent.bdi.set_belief("bridge_request", "set_task_none",)
+                    self.agent.active_task = "ninguna"
+
                 elif content == "deactivate_alarm":
-                    self.agent.bdi.set_belief("bridge_request", "deactivate_alarm",)
+                    print(f"[{self.agent.jid}] REQUEST -> deactivate_alarm")
+                    self.agent.active_task = "ninguna"
+                    self.agent.bdi.set_belief("bridge_request", "deactivate_alarm")
+
                 else:
                     print(f"[{self.agent.jid}] "
                           f"Comando desconocido: {content}")
@@ -265,6 +288,7 @@ class BDI_agent_monitor(BDIAgent):
         self.current_camara_ok = None
         self.current_fire = None
         self.current_person_score = None
+        self.active_task = "ninguna"
 
         # Estado temporal de fuego.
         self.fire_positive_streak = 0
@@ -386,16 +410,25 @@ class VisionBehaviour(CyclicBehaviour):
         fire = self.agent.confirmed_fire
 
         if fire != self.agent.current_fire:
-            print(f"[{self.agent.jid}] "
-                  f"FUEGO: candidato={fire_candidate} | "
-                  f"confirmado={fire} | "
-                  f"positivos={self.agent.fire_positive_streak} | "
-                  f"negativos={self.agent.fire_negative_streak}")
 
-            print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_fuego({fire})")
+            print(
+                f"[{self.agent.jid}] "
+                f"FUEGO: candidato={fire_candidate} | "
+                f"confirmado={fire}"
+            )
 
-            self.agent.bdi.set_belief("actualizar_fuego", fire)
             self.agent.current_fire = fire
+
+            if self.agent.active_task == "detecta_fuego":
+                print(
+                    f"[{self.agent.jid}] "
+                    f"PYTHON -> BDI: actualizar_fuego({fire})"
+                )
+
+                self.agent.bdi.set_belief(
+                    "actualizar_fuego",
+                    fire
+                )
 
         # ----------------------------------------------------
         # RESULTADO DE YOLO ANTERIOR
@@ -409,9 +442,26 @@ class VisionBehaviour(CyclicBehaviour):
                 self.agent.cam_state = score
 
                 if score != self.agent.current_person_score:
-                    print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_persona({score})")
-                    self.agent.bdi.set_belief("actualizar_persona", score)
+
+                    print(
+                        f"[{self.agent.jid}] "
+                        f"YOLO -> nuevo score: {score}"
+                    )
+
                     self.agent.current_person_score = score
+
+                    if self.agent.active_task == "detecta_persona":
+
+                        print(
+                            f"[{self.agent.jid}] "
+                            f"PYTHON -> BDI: "
+                            f"actualizar_persona({score})"
+                        )
+
+                        self.agent.bdi.set_belief(
+                            "actualizar_persona",
+                            score
+                        )
 
             except Exception as e:
                 print(f"[{self.agent.jid}] Error en YOLO: {e}")
