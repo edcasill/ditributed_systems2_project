@@ -23,15 +23,19 @@ person(0).
 
 +bridge_request(detecta_fuego) <-
     .print("[BDI] PLAN detecta_fuego EJECUTADO");
+    .print("[BDI] >>> REQUEST detecta_fuego <<<");
     -bridge_request(detecta_fuego);
     -tarea_actual(_);
-    +tarea_actual("detecta_fuego").
+    +tarea_actual("detecta_fuego");
+    .print("[BDI] TAREA ACTUAL = detecta_fuego").
 
 +bridge_request(detecta_persona) <-
     .print("[BDI] PLAN detecta_persona EJECUTADO");
+    .print("[BDI] >>> REQUEST detecta_persona <<<");
     -bridge_request(detecta_persona);
     -tarea_actual(_);
-    +tarea_actual("detecta_persona").
+    +tarea_actual("detecta_persona");
+    .print("[BDI] TAREA ACTUAL = detecta_persona").
 
 +bridge_request(set_task_none) <-
     .print("[BDI] PLAN set_task_none EJECUTADO");

@@ -228,8 +228,10 @@ class FipaReceiver(CyclicBehaviour):
                           f"bridge_request(get_state)")
                     self.agent.bdi.set_belief("bridge_request", "get_state",)
                 elif content == "detecta_fuego":
+                    print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_fuego)")
                     self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
                 elif content == "detecta_persona":
+                    print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_persona)")
                     self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
                 elif content == "set_task_none":
                     self.agent.bdi.set_belief("bridge_request", "set_task_none",)
