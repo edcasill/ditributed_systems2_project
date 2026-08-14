@@ -12,10 +12,7 @@ import torch
 from collections import deque
 
 
-# ============================================================
 # CONFIGURACION DE DETECCION DE FUEGO
-# ============================================================
-# Un solo modelo compartido evita duplicar memoria.
 # El lock evita ejecutar el mismo modelo desde dos hilos simultaneamente.
 MODEL = YOLO("yolov8n-pose.pt")
 MODEL_LOCK = threading.Lock()
@@ -29,9 +26,6 @@ else:
     print("[YOLO] CUDA no disponible. Se usara CPU.")
 
 
-# ============================================================
-# CAMARA
-# ============================================================
 def open_camera(url):
     """Abre una camara RTSP con un buffer pequeno para reducir latencia."""
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
@@ -42,9 +36,6 @@ def open_camera(url):
     return cap
 
 
-# ============================================================
-# DETECCION DE FUEGO
-# ============================================================
 def detect_fire_candidate(frame):
     """
     Detecta un candidato de fuego en UN frame.
@@ -93,9 +84,6 @@ def detect_fire_candidate(frame):
     return max_area >= 20
 
 
-# ============================================================
-# PUNTAJE CORPORAL
-# ============================================================
 def calcula_puntaje(umbral_deteccion, nariz, ojo_i, ojo_d, oreja_i, oreja_d,
                     confianza_hombro, confianza_cadera, confianza_rodilla):
     valores = (nariz, ojo_i, ojo_d, oreja_i, oreja_d,
@@ -103,9 +91,6 @@ def calcula_puntaje(umbral_deteccion, nariz, ojo_i, ojo_d, oreja_i, oreja_d,
     return sum(v > umbral_deteccion for v in valores)
 
 
-# ============================================================
-# YOLO
-# ============================================================
 def procesar_frame(frame, model):
     """
     Ejecuta YOLO y devuelve:
@@ -207,10 +192,12 @@ def draw_detections(frame, detections):
     return frame
 
 
-# ============================================================
-# RECEPCION FIPA
-# ============================================================
 class FipaReceiver(CyclicBehaviour):
+    """
+    Recive mensajes en el estandar FIPA y lo traduce a asl para los agentes spade
+    Args:
+        CyclicBehaviour (_type_): _description_
+    """
     async def run(self):
         msg = await self.receive(timeout=0.1)
         if msg:
@@ -229,27 +216,28 @@ class FipaReceiver(CyclicBehaviour):
 
                 elif content == "detecta_fuego":
                     print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_fuego)")
-                    # self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
-                    # raise Exception("SI LLEGO EL REQUEST FUEGO")
+                    self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
                     self.agent.active_task = "detecta_fuego"
 
                     # Sincronizar con el BDI el ultimo estado conocido de fuego
+                    """
                     if self.agent.current_fire is not None:
                         print(f"[{self.agent.jid}] Sincronizando ultimo estado de fuego: {self.agent.current_fire}")
                         self.agent.bdi.set_belief("actualizar_fuego", bool(self.agent.current_fire))
                     self.agent.bdi.set_belief("bridge_request", "detecta_fuego",)
+                    """
                 
                 elif content == "detecta_persona":
                     print(f"[{self.agent.jid}] REQUEST -> bridge_request(detecta_persona)")
-                    # self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
-                    # raise Exception("SI LLEGO EL REQUEST PERSONA")\
+                    self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
                     self.agent.active_task = "detecta_persona"
 
                      # Sincronizar con el BDI el ultimo score conocido
-                    if self.agent.current_person_score is not None:
+                    """if self.agent.current_person_score is not None:
                         print(f"[{self.agent.jid}] Sincronizando ultimo score conocido: {self.agent.current_person_score}")
                         self.agent.bdi.set_belief("actualizar_persona", int(self.agent.current_person_score))
                     self.agent.bdi.set_belief("bridge_request", "detecta_persona",)
+                    """
                 
                 elif content == "set_task_none":
                     self.agent.bdi.set_belief("bridge_request", "set_task_none",)
@@ -269,12 +257,9 @@ class FipaReceiver(CyclicBehaviour):
         await asyncio.sleep(0)
 
 
-# ============================================================
-# AGENTE MONITOR
-# ============================================================
 class BDI_agent_monitor(BDIAgent):
     def __init__(self, jid, passw, behaviour, cam_id, url, model):
-        super().__init__(jid, passw, behaviour, verify_security=False,)
+        super().__init__(jid, passw, behaviour, verify_security=False)  # agente
 
         self.cam_id = cam_id
         self.url = url
@@ -298,9 +283,7 @@ class BDI_agent_monitor(BDIAgent):
         # Una sola inferencia pendiente por monitor.
         self.inference_task = None
 
-    # ========================================================
     # ACCION PERSONALIZADA AGENTSPEAK -> PUENTE
-    # ========================================================
     def add_custom_actions(self, actions):
         @actions.add(".enviar_mensaje_puente", 6)
         def _enviar_mensaje_puente(agent, term, intention):
@@ -356,40 +339,28 @@ class BDI_agent_monitor(BDIAgent):
         self.add_behaviour(FipaReceiver())
 
 
-# ============================================================
-# VISION
-# ============================================================
 class VisionBehaviour(CyclicBehaviour):
     async def run(self):
         success, frame = await asyncio.to_thread(self.agent.cap.read)
-        # ----------------------------------------------------
         # CAMARA DESCONECTADA
-        # ----------------------------------------------------
         if not success:
             if self.agent.current_camara_ok is not False:
                 print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_camara(false)")
                 self.agent.bdi.set_belief("actualizar_camara", False,)
                 self.agent.current_camara_ok = False
-
             self.agent.cap.release()
             await asyncio.sleep(constants.RECONNECT_DELAY)
             self.agent.cap = open_camera(self.agent.url)
-
             return
 
-        # ----------------------------------------------------
         # CAMARA ENCENDIDA
-        # ----------------------------------------------------
         if self.agent.current_camara_ok is not True:
             print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_camara(true)")
             self.agent.bdi.set_belief("actualizar_camara", True,)
             self.agent.current_camara_ok = True
-
         self.agent.frame_count += 1
 
-        # ----------------------------------------------------
         # FUEGO
-        # ----------------------------------------------------
         fire_candidate = detect_fire_candidate(frame)
 
         if fire_candidate:
@@ -410,29 +381,12 @@ class VisionBehaviour(CyclicBehaviour):
         fire = self.agent.confirmed_fire
 
         if fire != self.agent.current_fire:
-
-            print(
-                f"[{self.agent.jid}] "
-                f"FUEGO: candidato={fire_candidate} | "
-                f"confirmado={fire}"
-            )
-
+            print(f"[{self.agent.jid}] FUEGO: candidato={fire_candidate} | confirmado={fire}")
             self.agent.current_fire = fire
+            print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_fuego({fire})")
+            self.agent.bdi.set_belief("actualizar_fuego",fire)
 
-            if self.agent.active_task == "detecta_fuego":
-                print(
-                    f"[{self.agent.jid}] "
-                    f"PYTHON -> BDI: actualizar_fuego({fire})"
-                )
-
-                self.agent.bdi.set_belief(
-                    "actualizar_fuego",
-                    fire
-                )
-
-        # ----------------------------------------------------
         # RESULTADO DE YOLO ANTERIOR
-        # ----------------------------------------------------
         task = self.agent.inference_task
 
         if task is not None and task.done():
@@ -442,44 +396,24 @@ class VisionBehaviour(CyclicBehaviour):
                 self.agent.cam_state = score
 
                 if score != self.agent.current_person_score:
-
-                    print(
-                        f"[{self.agent.jid}] "
-                        f"YOLO -> nuevo score: {score}"
-                    )
-
+                    print(f"[{self.agent.jid}] YOLO -> nuevo score: {score}")
                     self.agent.current_person_score = score
-
-                    if self.agent.active_task == "detecta_persona":
-
-                        print(
-                            f"[{self.agent.jid}] "
-                            f"PYTHON -> BDI: "
-                            f"actualizar_persona({score})"
-                        )
-
-                        self.agent.bdi.set_belief(
-                            "actualizar_persona",
-                            score
-                        )
+                    print(f"[{self.agent.jid}] PYTHON -> BDI: actualizar_persona({score})")
+                    self.agent.bdi.set_belief("actualizar_persona", score)
 
             except Exception as e:
                 print(f"[{self.agent.jid}] Error en YOLO: {e}")
             finally:
                 self.agent.inference_task = None
 
-        # ----------------------------------------------------
         # LANZAR NUEVA INFERENCIA
-        # ----------------------------------------------------
         if (self.agent.frame_count % constants.INFERENCE_EVERY_N_FRAMES == 0 and self.agent.inference_task is None):
             frame_for_inference = frame.copy()
             self.agent.inference_task = asyncio.create_task(asyncio.to_thread(procesar_frame,
                                                                               frame_for_inference,
-                                                                              self.agent.model,))
+                                                                              self.agent.model))
 
-        # ----------------------------------------------------
         # VISUALIZACION
-        # ----------------------------------------------------
         display_frame = draw_detections(frame, self.agent.cache,)
         display_frame = cv2.resize(display_frame,
                                    (constants.DISPLAY_WIDTH, constants.DISPLAY_HEIGHT),
@@ -495,7 +429,6 @@ class VisionBehaviour(CyclicBehaviour):
 # MAIN
 # ============================================================
 async def main():
-    # Compartimos el modelo para evitar duplicar VRAM/RAM.
     model = MODEL
 
     url1 = (f"rtsp://{constants.USUARIOS[0]}:{constants.CONTRASENIA}@{constants.IPS[0]}/stream2")
